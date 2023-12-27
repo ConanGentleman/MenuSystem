@@ -1,9 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Interfaces/OnlineSessionInterface.h"
+
 #include "MenuSystemCharacter.generated.h"
 
 UCLASS(config=Game)
@@ -64,9 +66,18 @@ public:
 	
 public:
 
-	//ָ�����߻Ựsession�ӿڵ�ָ��
-	//IOnlineSessionPtr�ı�������TSharedPtr<class IOnlineSession, ESPMode::ThreadSafe>
-	//IOnlineSessionPtr OnlineSessionInterface;
-	TSharedPtr<class IOnlineSession, ESPMode::ThreadSafe> OnlineSessionInterface;
+	//指向在线会话session接口的指针
+	//IOnlineSessionPtr的别名就是TSharedPtr<class IOnlineSession, ESPMode::ThreadSafe>
+	IOnlineSessionPtr OnlineSessionInterface;
+	//TSharedPtr<class IOnlineSession, ESPMode::ThreadSafe> OnlineSessionInterface;
+
+protected:
+	UFUNCTION(BlueprintCallable)
+	void CreateGameSession();
+	//会话完成时调用
+	void OnCreateSessionComplete(FName SessionName,bool bWasSuccessful);
+private:
+	//创建完会话的委托
+	FOnCreateSessionCompleteDelegate CreateSessionCompleteDelegate;
 };
 

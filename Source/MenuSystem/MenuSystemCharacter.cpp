@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "MenuSystemCharacter.h"
 #include "Camera/CameraComponent.h"
@@ -8,12 +8,14 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "OnlineSubsystem.h"
-#include "Interfaces/OnlineSessionInterface.h"
 
 //////////////////////////////////////////////////////////////////////////
 // AMenuSystemCharacter
 
-AMenuSystemCharacter::AMenuSystemCharacter()
+//FOnCreateSessionCompleteDelegate::CreateUObject()代表给CreateSessionCompleteDelegate初始化的默认值
+//，参数为使用委托的类、想要绑定到委托的函数(ThisClass就是AMenuSystemCharacter）
+AMenuSystemCharacter::AMenuSystemCharacter():
+	CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this,&AMenuSystemCharacter::OnCreateSessionComplete))
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -52,10 +54,10 @@ AMenuSystemCharacter::AMenuSystemCharacter()
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 
-	//����OnlineSubsystem�ĵط�
+	//访问OnlineSubsystem的地方
 	IOnlineSubsystem* OnlineSubsystem= IOnlineSubsystem::Get();
 	if (OnlineSubsystem) {
-		//���ʻỰSession
+		//访问会话Session
 		OnlineSessionInterface = OnlineSubsystem->GetSessionInterface();
 	
 		if (GEngine) {
@@ -93,6 +95,26 @@ void AMenuSystemCharacter::SetupPlayerInputComponent(class UInputComponent* Play
 	// handle touch devices
 	PlayerInputComponent->BindTouch(IE_Pressed, this, &AMenuSystemCharacter::TouchStarted);
 	PlayerInputComponent->BindTouch(IE_Released, this, &AMenuSystemCharacter::TouchStopped);
+}
+
+void AMenuSystemCharacter::CreateGameSession()
+{
+	//当按下数字1调用
+	if (OnlineSessionInterface.IsValid()) {
+		return;
+	}
+	//如果已经创建了一个会话，只有销毁该会话，才能创建另一个会话
+	//NAME_GameSession是UE自带的常量
+	auto ExistingSession=OnlineSessionInterface->GetNamedSession(NAME_GameSession);
+	if (ExistingSession != nullptr) {
+		//销毁会话
+		OnlineSessionInterface->DestroySession(NAME_GameSession);
+	}
+	//新建一个会话
+}
+
+void AMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
+{
 }
 
 void AMenuSystemCharacter::TouchStarted(ETouchIndex::Type FingerIndex, FVector Location)
