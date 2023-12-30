@@ -8,14 +8,15 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "OnlineSubsystem.h"
+#include "OnlineSessionSettings.h"
 
 //////////////////////////////////////////////////////////////////////////
 // AMenuSystemCharacter
 
 //FOnCreateSessionCompleteDelegate::CreateUObject()代表给CreateSessionCompleteDelegate初始化的默认值
 //，参数为使用委托的类、想要绑定到委托的函数(ThisClass就是AMenuSystemCharacter）
-AMenuSystemCharacter::AMenuSystemCharacter():
-	CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this,&AMenuSystemCharacter::OnCreateSessionComplete))
+AMenuSystemCharacter::AMenuSystemCharacter() :
+	CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this, &AMenuSystemCharacter::OnCreateSessionComplete))
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -55,18 +56,18 @@ AMenuSystemCharacter::AMenuSystemCharacter():
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 
 	//访问OnlineSubsystem的地方
-	IOnlineSubsystem* OnlineSubsystem= IOnlineSubsystem::Get();
+	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
 	if (OnlineSubsystem) {
-		//访问会话Session
+		//访问会话Session接口
 		OnlineSessionInterface = OnlineSubsystem->GetSessionInterface();
-	
+
 		if (GEngine) {
 			GEngine->AddOnScreenDebugMessage(
 				-1,
 				15.f,
 				FColor::Blue,
 				FString::Printf(TEXT("Found subsystem %s"), *OnlineSubsystem->GetSubsystemName().ToString())
-				);
+			);
 		}
 	}
 }
@@ -100,21 +101,67 @@ void AMenuSystemCharacter::SetupPlayerInputComponent(class UInputComponent* Play
 void AMenuSystemCharacter::CreateGameSession()
 {
 	//当按下数字1调用
-	if (OnlineSessionInterface.IsValid()) {
+	if (!OnlineSessionInterface.IsValid()) {
 		return;
 	}
 	//如果已经创建了一个会话，只有销毁该会话，才能创建另一个会话
 	//NAME_GameSession是UE自带的常量
-	auto ExistingSession=OnlineSessionInterface->GetNamedSession(NAME_GameSession);
+	auto ExistingSession = OnlineSessionInterface->GetNamedSession(NAME_GameSession);
 	if (ExistingSession != nullptr) {
 		//销毁会话
 		OnlineSessionInterface->DestroySession(NAME_GameSession);
 	}
-	//新建一个会话
+	//添加委托.一旦创建会话，回调函数就会绑定到这个委托上
+	OnlineSessionInterface->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
+	///新建一个会话
+
+	//先设置会话
+	TSharedPtr<FOnlineSessionSettings> SessionSettings = MakeShareable(new FOnlineSessionSettings());
+	//是否是局域网连接
+	SessionSettings->bIsLANMatch = false;
+	//最大玩家数（连接数）
+	SessionSettings->NumPublicConnections = 4;
+	//会话正在运行，其他玩家是否可以加入。
+	SessionSettings->bAllowJoinInProgress = true;
+	//steam有一个叫状态的东西，这个打开是为了让我们的连接正常工作
+	SessionSettings->bAllowJoinViaPresence = true;
+	//该匹配是否在在线服务上公开宣传[让其他玩家找到这个会话]
+	SessionSettings->bShouldAdvertise = true;
+	//bUsesPresence :Whether to display user presence information or not
+	//显示用户状态，查找所在区域正在进行的会话
+	SessionSettings->bUsesPresence = true;
+	//bUseLobbiesIfAvailable ：Whether to prefer lobbies APls if the platform supports them
+	//如果平台支持，是否选择大厅的API
+	//SessionSettings->bUseLobbiesIfAvailable = true;
+	//从本地玩家获取唯一网络ID	
+	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+	//创建会话，参数：ID，会话名称，绘画设置
+	OnlineSessionInterface->CreateSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, *SessionSettings);
+
 }
 
 void AMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
 {
+	if (bWasSuccessful) {
+		if (GEngine) {
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				15.f,
+				FColor::Blue,
+				FString::Printf(TEXT("Create session: %s"),*SessionName.ToString())
+			);
+		}
+	}
+	else {
+		if (GEngine) {
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				15.f,
+				FColor::Red,
+				FString::Printf(TEXT("Failed to create session!"))
+			);
+		}
+	}
 }
 
 void AMenuSystemCharacter::TouchStarted(ETouchIndex::Type FingerIndex, FVector Location)
@@ -155,12 +202,12 @@ void AMenuSystemCharacter::MoveForward(float Value)
 
 void AMenuSystemCharacter::MoveRight(float Value)
 {
-	if ( (Controller != nullptr) && (Value != 0.0f) )
+	if ((Controller != nullptr) && (Value != 0.0f))
 	{
 		// find out which way is right
 		const FRotator Rotation = Controller->GetControlRotation();
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
-	
+
 		// get right vector 
 		const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 		// add movement in that direction
