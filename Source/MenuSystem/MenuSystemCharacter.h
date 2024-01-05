@@ -74,10 +74,20 @@ public:
 protected:
 	UFUNCTION(BlueprintCallable)
 	void CreateGameSession();
+
+	UFUNCTION(BlueprintCallable)
+	void JoinGameSession();
+
 	//会话完成时调用
 	void OnCreateSessionComplete(FName SessionName,bool bWasSuccessful);
+	//找到会话时调用
+	void OnFindSessionComplete(bool bWasSuccessful);
 private:
 	//创建完会话的委托
 	FOnCreateSessionCompleteDelegate CreateSessionCompleteDelegate;
+	//找到会话的委托
+	FOnFindSessionsCompleteDelegate FindSessionsCompleteDelegate;
+	//会话查找指针
+	TSharedPtr<FOnlineSessionSearch> SessionSearch;
 };
 

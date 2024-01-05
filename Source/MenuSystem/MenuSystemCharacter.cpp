@@ -16,7 +16,8 @@
 //FOnCreateSessionCompleteDelegate::CreateUObject()代表给CreateSessionCompleteDelegate初始化的默认值
 //，参数为使用委托的类、想要绑定到委托的函数(ThisClass就是AMenuSystemCharacter）
 AMenuSystemCharacter::AMenuSystemCharacter() :
-	CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this, &AMenuSystemCharacter::OnCreateSessionComplete))
+	CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this, &AMenuSystemCharacter::OnCreateSessionComplete)),
+	FindSessionsCompleteDelegate(FOnFindSessionsCompleteDelegate::CreateUObject(this,&AMenuSystemCharacter::OnFindSessionComplete))
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -131,13 +132,39 @@ void AMenuSystemCharacter::CreateGameSession()
 	//显示用户状态，查找所在区域正在进行的会话
 	SessionSettings->bUsesPresence = true;
 	//bUseLobbiesIfAvailable ：Whether to prefer lobbies APls if the platform supports them
-	//如果平台支持，是否选择大厅的API
-	//SessionSettings->bUseLobbiesIfAvailable = true;
+	//如果平台支持，是否选择大厅的API(5.0以上不开启可能会无法搜索到会话
+	SessionSettings->bUseLobbiesIfAvailable = true;
 	//从本地玩家获取唯一网络ID	
 	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
-	//创建会话，参数：ID，会话名称，绘画设置
+	//创建会话，参数：唯一网络ID，会话名称，绘画设置
 	OnlineSessionInterface->CreateSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, *SessionSettings);
 
+}
+
+void AMenuSystemCharacter::JoinGameSession()
+{
+	//找到游戏会话
+	if(!OnlineSessionInterface.IsValid()){
+		return;
+	}
+
+	//添加委托.一旦找到会话，回调函数就会绑定到这个委托上
+	OnlineSessionInterface->AddOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegate);
+
+	//定义一个会话搜索
+	SessionSearch = MakeShareable(new FOnlineSessionSearch());
+	//对会话搜索进行设置
+	///搜索最大结果（steam通用测试ID为480，有可能有很多人在同时测试，因此把值设置高一点）
+	SessionSearch->MaxSearchResults = 10000;
+	// 关闭局域网查询
+	SessionSearch->bIsLanQuery = false;
+	//查询设置，只查询处于使用状态（即using presence） 值为 true 的，也就是正在使用的Session
+	SessionSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
+
+	//从本地玩家获取唯一网络ID	
+	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+	//查找会话,参数：唯一网络ID，会话搜索
+	OnlineSessionInterface->FindSessions(*LocalPlayer->GetPreferredUniqueNetId(), SessionSearch.ToSharedRef());
 }
 
 void AMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
@@ -159,6 +186,22 @@ void AMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWasS
 				15.f,
 				FColor::Red,
 				FString::Printf(TEXT("Failed to create session!"))
+			);
+		}
+	}
+}
+
+void AMenuSystemCharacter::OnFindSessionComplete(bool bWasSuccessful)
+{
+	for (auto Result : SessionSearch->SearchResults) {
+		FString Id = Result.GetSessionIdStr();
+		FString User = Result.Session.OwningUserName;
+		if (GEngine) {
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				15.f,
+				FColor::Cyan,
+				FString::Printf(TEXT("Id: %s, User: %s"), *Id, *User)
 			);
 		}
 	}
