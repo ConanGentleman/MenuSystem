@@ -17,7 +17,8 @@
 //，参数为使用委托的类、想要绑定到委托的函数(ThisClass就是AMenuSystemCharacter）
 AMenuSystemCharacter::AMenuSystemCharacter() :
 	CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this, &AMenuSystemCharacter::OnCreateSessionComplete)),
-	FindSessionsCompleteDelegate(FOnFindSessionsCompleteDelegate::CreateUObject(this,&AMenuSystemCharacter::OnFindSessionComplete))
+	FindSessionsCompleteDelegate(FOnFindSessionsCompleteDelegate::CreateUObject(this,&AMenuSystemCharacter::OnFindSessionComplete)),
+	JoinSessionCompleteDelegate(FOnJoinSessionCompleteDelegate::CreateUObject(this,&AMenuSystemCharacter::OnJoinSessionComplete))
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -134,6 +135,8 @@ void AMenuSystemCharacter::CreateGameSession()
 	//bUseLobbiesIfAvailable ：Whether to prefer lobbies APls if the platform supports them
 	//如果平台支持，是否选择大厅的API(5.0以上不开启可能会无法搜索到会话
 	SessionSettings->bUseLobbiesIfAvailable = true;
+	//设置匹配类型(键值对本身不必设定匹配类型，但这里我们使用这个来定义匹配类型)，会话通过在线服务以及ping进行广播
+	SessionSettings->Set(FName("MatchType"), FString("FreeForAll"),EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	//从本地玩家获取唯一网络ID	
 	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
 	//创建会话，参数：唯一网络ID，会话名称，绘画设置
@@ -178,6 +181,12 @@ void AMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWasS
 				FString::Printf(TEXT("Create session: %s"),*SessionName.ToString())
 			);
 		}
+
+		UWorld* World = GetWorld();
+		if (World) {
+			//服务器跳转场景,并作为监听服务器
+			World->ServerTravel(FString("/Game/ThirdPerson/Maps/Lobby?listen"));
+		}
 	}
 	else {
 		if (GEngine) {
@@ -193,9 +202,15 @@ void AMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWasS
 
 void AMenuSystemCharacter::OnFindSessionComplete(bool bWasSuccessful)
 {
+	if (!OnlineSessionInterface.IsValid()) {
+		return;
+	}
 	for (auto Result : SessionSearch->SearchResults) {
 		FString Id = Result.GetSessionIdStr();
 		FString User = Result.Session.OwningUserName;
+		FString MatchType;
+		//获取键值对-匹配类型
+		Result.Session.SessionSettings.Get(FName("MatchType"), MatchType);
 		if (GEngine) {
 			GEngine->AddOnScreenDebugMessage(
 				-1,
@@ -203,6 +218,49 @@ void AMenuSystemCharacter::OnFindSessionComplete(bool bWasSuccessful)
 				FColor::Cyan,
 				FString::Printf(TEXT("Id: %s, User: %s"), *Id, *User)
 			);
+		}
+		if (MatchType == FString("FreeForAll")) {
+			if (GEngine) {
+				GEngine->AddOnScreenDebugMessage(
+					-1,
+					15.f,
+					FColor::Cyan,
+					FString::Printf(TEXT("Joining Match Type: %s"), *MatchType)
+				);
+			}
+
+			//绑定加入会话委托
+			OnlineSessionInterface->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
+			//从本地玩家获取唯一网络ID	
+			const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+			//加入会话,参数：唯一网络ID，会话名称，会话搜索结果
+			OnlineSessionInterface->JoinSession(*LocalPlayer->GetPreferredUniqueNetId(),NAME_GameSession,Result);
+		}
+	}
+}
+
+void AMenuSystemCharacter::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
+{
+	if (!OnlineSessionInterface.IsValid()) {
+		return;
+	}
+	//IP地址
+	FString Address;
+	//返回用于加入匹配的特定于平台的连接信息,参数：会话名，接收IP的局部变量
+	if (OnlineSessionInterface->GetResolvedConnectString(NAME_GameSession, Address)) {
+		if (GEngine) {
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				15.f,
+				FColor::Yellow,
+				FString::Printf(TEXT("Connect string: %s"), *Address)
+			);
+		}
+		//获取玩家控制器
+		APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
+		if (PlayerController) {
+			//客户端跳转场景（加入服务器场景）,参数：服务器IP地址，跳转类型
+			PlayerController->ClientTravel(Address, ETravelType::TRAVEL_Absolute);
 		}
 	}
 }

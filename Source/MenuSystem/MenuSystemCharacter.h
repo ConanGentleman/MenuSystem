@@ -82,6 +82,8 @@ protected:
 	void OnCreateSessionComplete(FName SessionName,bool bWasSuccessful);
 	//找到会话时调用
 	void OnFindSessionComplete(bool bWasSuccessful);
+	//加入会话完成时调用
+	void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
 private:
 	//创建完会话的委托
 	FOnCreateSessionCompleteDelegate CreateSessionCompleteDelegate;
@@ -89,5 +91,7 @@ private:
 	FOnFindSessionsCompleteDelegate FindSessionsCompleteDelegate;
 	//会话查找指针
 	TSharedPtr<FOnlineSessionSearch> SessionSearch;
+	//加入会话的委托
+	FOnJoinSessionCompleteDelegate JoinSessionCompleteDelegate;
 };
 
